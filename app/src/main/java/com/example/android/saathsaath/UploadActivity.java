@@ -3,8 +3,12 @@ package com.example.android.saathsaath;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
+import android.os.Environment;
 import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
@@ -14,7 +18,10 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
+import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -27,7 +34,12 @@ import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class UploadActivity extends AppCompatActivity {
 
@@ -48,10 +60,11 @@ public class UploadActivity extends AppCompatActivity {
     private String[] dialogOptions;
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mStorageReference;
-    private String cameraIntentPic = null;
-    private String galleryIntentPic = null;
     private Uri selectedImageUri;
     private String descriptionText;
+    private String mTempPhotoPath;
+    private String imagePath = null;
+    private boolean uploadViaCam = false;
 
     private String mUsername;
 
@@ -84,7 +97,7 @@ public class UploadActivity extends AppCompatActivity {
 
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-                if (charSequence.toString().trim().length() > 0) {
+                if (charSequence.toString().trim().length() < 1) {
                     post.setEnabled(false);
                 }
             }
@@ -135,8 +148,9 @@ public class UploadActivity extends AppCompatActivity {
                                 ActivityCompat.requestPermissions(UploadActivity.this,
                                         new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
                                         REQUEST_STORAGE_PERMISSION);
-                            } else
+                            } else {
                                 cameraIntent();
+                            }
                         } else if (dialogOptions[i].equals("From Gallery"))
                             galleryIntent();
                         else
@@ -146,26 +160,43 @@ public class UploadActivity extends AppCompatActivity {
         imageChoseDialog.show();
     }
 
-    private boolean upload() {
+    private void upload() {
         // Get a reference to store file at chat_photos/<FILENAME>
 
-        StorageReference photoRef = mStorageReference.child(selectedImageUri.getLastPathSegment());
+        if (uploadViaCam) {
+            StorageReference photoRef = mStorageReference.child(mTempPhotoPath);
 
-        // Upload file to Firebase Storage
-        photoRef.putFile(selectedImageUri)
-                .addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
-                    public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                        // When the image has successfully uploaded, we get its download URL
-                        Uri downloadUrl = taskSnapshot.getDownloadUrl();
+            photoRef.putFile(Uri.parse(mTempPhotoPath))
+                    .addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                            Uri downloadUrl = taskSnapshot.getDownloadUrl();
 
-                        // Set the download URL to the message box, so that the user can send it to the database
-                        Issue issue = new Issue(descriptionText, mUsername, downloadUrl.toString());
-                        mDatabaseReference.push().setValue(issue);
-                        //Inte)
-                    }
-                });
+                            // Set the download URL to the message box, so that the user can send it to the database
+                            Issue issue = new Issue(descriptionText, mUsername, downloadUrl.toString());
+                            mDatabaseReference.push().setValue(issue);
+                            uploadImage_btn.setText(getString(R.string.upload_img));
+                        }
+                    });
+        } else {
 
-        return true;
+            StorageReference photoRef = mStorageReference.child(selectedImageUri.toString());
+
+            // Upload file to Firebase Storage
+            photoRef.putFile(selectedImageUri)
+                    .addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                        public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                            // When the image has successfully uploaded, we get its download URL
+                            Uri downloadUrl = taskSnapshot.getDownloadUrl();
+
+                            // Set the download URL to the message box, so that the user can send it to the database
+                            Issue issue = new Issue(descriptionText, mUsername, downloadUrl.toString());
+                            mDatabaseReference.push().setValue(issue);
+                            Intent intent = new Intent(UploadActivity.this, TaF.class);
+                            startActivity(intent);
+                        }
+                    });
+        }
     }
 
 
@@ -177,35 +208,25 @@ public class UploadActivity extends AppCompatActivity {
 
     private void cameraIntent() {
 
-
-        // Create the capture image intent
         Intent capturePhotoIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
 
-        // Ensure that there's a camera activity to handle the intent
         if (capturePhotoIntent.resolveActivity(getPackageManager()) != null) {
             // Create the temporary File where the photo should go
             File photoFile = null;
             try {
-                photoFile = File.createTempFile("Issue", ".jpg", getExternalCacheDir());
+                photoFile = createTempImageFile();
             } catch (IOException ex) {
-                // Error occurred while creating the File
                 ex.printStackTrace();
             }
             // Continue only if the File was successfully created
             if (photoFile != null) {
 
-                // Get the path of the temporary file
-                //mTempPhotoPath = photoFile.getAbsolutePath();
+                mTempPhotoPath = photoFile.getAbsolutePath();
 
-                // Get the content URI for the image file
                 Uri photoURI = FileProvider.getUriForFile(this,
                         FILE_PROVIDER_AUTHORITY,
                         photoFile);
-
-                // Add the URI so the camera can store the image
                 capturePhotoIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
-
-                // Launch the camera activity
                 startActivityForResult(capturePhotoIntent, REQUEST_IMAGE_CAPTURE);
             }
         }
@@ -213,39 +234,115 @@ public class UploadActivity extends AppCompatActivity {
 
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        // Called when you request permission to read and write to external storage
+        switch (requestCode) {
+            case REQUEST_STORAGE_PERMISSION: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // If you get permission, launch the camera
+                    cameraIntent();
+                } else {
+                    // If you do not get permission, show a Toast
+                    Toast.makeText(this, R.string.permission_denied, Toast.LENGTH_SHORT).show();
+                }
+                break;
+            }
+        }
+    }
+
+    @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
+
         if (requestCode == PHOTO_PICK && resultCode == RESULT_OK) {
             selectedImageUri = null;
+            uploadViaCam = false;
             selectedImageUri = data.getData();
         } else if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
-            selectedImageUri = null;
-            selectedImageUri = data.getData();
-            uploadImage_btn.setText(selectedImageUri.getLastPathSegment());
+            Bitmap resultBitmap = resamplePic(mTempPhotoPath);
+            uploadViaCam = true;
+            imagePath = saveImage(resultBitmap);
+            uploadImage_btn.setText(imagePath);
+            uploadImage_btn.setClickable(false);
         }
 
-
-        // Get a reference to store file at chat_photos/<FILENAME>
-        StorageReference photoRef = mStorageReference.child(selectedImageUri.getLastPathSegment());
-        if (selectedImageUri != null) {
-            photoRef = mStorageReference.child(selectedImageUri.getLastPathSegment());
-        }
-
-        // Upload file to Firebase Storage
-        photoRef.putFile(selectedImageUri)
-                .addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
-                    public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                        // When the image has successfully uploaded, we get its download URL
-                        Uri downloadUrl = taskSnapshot.getDownloadUrl();
-
-                        // Set the download URL to the message box, so that the user can send it to the database
-                        Issue issue = new Issue(null, mUsername, downloadUrl.toString());
-                        mDatabaseReference.push().setValue(issue);
-                        Toast.makeText(UploadActivity.this, "Success!", Toast.LENGTH_LONG).show();
-                    }
-                });
     }
+
+    File createTempImageFile() throws IOException {
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
+                Locale.getDefault()).format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalCacheDir();
+
+        return File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+    }
+
+    private Bitmap resamplePic(String imagePath) {
+
+        // Get device screen size information
+        DisplayMetrics metrics = new DisplayMetrics();
+        WindowManager manager = (WindowManager) this.getSystemService(this.WINDOW_SERVICE);
+        manager.getDefaultDisplay().getMetrics(metrics);
+
+        int targetH = metrics.heightPixels;
+        int targetW = metrics.widthPixels;
+
+        // Get the dimensions of the original bitmap
+        BitmapFactory.Options bmOptions = new BitmapFactory.Options();
+        bmOptions.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(imagePath, bmOptions);
+        int photoW = bmOptions.outWidth;
+        int photoH = bmOptions.outHeight;
+
+        // Determine how much to scale down the image
+        int scaleFactor = Math.min(photoW / targetW, photoH / targetH);
+
+        // Decode the image file into a Bitmap sized to fill the View
+        bmOptions.inJustDecodeBounds = false;
+        bmOptions.inSampleSize = scaleFactor;
+
+        return BitmapFactory.decodeFile(imagePath);
+    }
+
+    private String saveImage(Bitmap image) {
+
+        String savedImagePath = null;
+
+        // Create the new file in the external storage
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
+                Locale.getDefault()).format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + ".jpg";
+        File storageDir = new File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                        + "/Emojify");
+        boolean success = true;
+        if (!storageDir.exists()) {
+            success = storageDir.mkdirs();
+        }
+
+        // Save the new Bitmap
+        if (success) {
+            File imageFile = new File(storageDir, imageFileName);
+            savedImagePath = imageFile.getAbsolutePath();
+            try {
+                OutputStream fOut = new FileOutputStream(imageFile);
+                image.compress(Bitmap.CompressFormat.JPEG, 100, fOut);
+                fOut.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return savedImagePath;
+    }
+
 }
 
 
