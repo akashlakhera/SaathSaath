@@ -28,7 +28,8 @@
                 android:layout_width="24dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="center"
-                android:src="@drawable/ic_launcher_foreground" />
+                android:id="@+id/gps_location"
+                android:src="@drawable/ic_gps_fixed_black_24dp" />
         </LinearLayout>
 
         <EditText

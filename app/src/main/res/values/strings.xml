@@ -3,4 +3,7 @@
     <string name="report_problem">Enter Details</string>
     <string name="tag">Tag</string>
     <string name="username">username</string>
+    <string name="permission_denied">Permission Denied!</string>
+    <string name="upload_img">Upload Image</string>
+    <string name="thanks_rsvp">You\'r words are delivered to the authorities\\nWe will make sure that your contribution to helping rajasthan will make it more beautiful!\\nThanks for your time for reaching us out.</string>
 </resources>
