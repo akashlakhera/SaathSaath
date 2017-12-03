@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.Image;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
@@ -23,6 +24,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -65,8 +67,9 @@ public class UploadActivity extends AppCompatActivity {
     private String mTempPhotoPath;
     private String imagePath = null;
     private boolean uploadViaCam = false;
+    private ImageView gpsImageView;
 
-    private String mUsername;
+    private String mUsername = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
