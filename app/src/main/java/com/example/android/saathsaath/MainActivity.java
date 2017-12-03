@@ -46,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
         issues.add("Others");
 
         ListView listView = findViewById(R.id.lv_issues);
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, R.layout.issue_item, issues);
         listView.setAdapter(adapter);
 
         mFirebaseAuthStateListener = new FirebaseAuth.AuthStateListener() {
